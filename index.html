@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fred Stock Pro v15 - Historique Complet</title>
+    
+    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-database-compat.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
+    
+    <style>
+        :root { --primary: #0f172a; --accent: #3b82f6; --success: #10b981; --warning: #f59e0b; --danger: #ef4444; --bg: #f8fafc; }
+        body { font-family: 'Inter', system-ui, sans-serif; margin: 0; background: var(--bg); color: #1e293b; font-size: 13px; }
+        
+        #firstLaunchOverlay, #loginOverlay { position: fixed; inset: 0; background: var(--primary); display: flex; align-items: center; justify-content: center; z-index: 9999; color: white; flex-direction: column; }
+        .login-box { background: white; padding: 2rem; border-radius: 1rem; color: #333; text-align: center; width: 340px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); }
+        .login-box input { width: 100%; padding: 12px; margin: 15px 0; border: 1.5px solid #e2e8f0; border-radius: 8px; text-align: center; font-size: 1.1rem; }
+        
+        #mainApp { display: none; }
+        .header { background: white; border-bottom: 1px solid #e2e8f0; padding: 0.8rem 2rem; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; }
+        .nav-tabs { display: flex; background: #e2e8f0; padding: 5px; border-radius: 8px; margin: 15px; gap: 5px; }
+        .nav-btn { flex: 1; padding: 10px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; background: none; color: #64748b; }
+        .nav-btn.active { background: white; color: var(--primary); box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+
+        .container { max-width: 1400px; margin: 1rem auto; padding: 0 1rem; }
+        .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+        .card { background: white; padding: 1rem; border-radius: 0.8rem; border-bottom: 4px solid #ddd; text-align: center; }
+        .card span { display: block; font-size: 1.4rem; font-weight: 800; margin-top: 5px; }
+
+        .forms-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; margin-bottom: 1.5rem; }
+        .box { background: white; padding: 1.2rem; border-radius: 0.8rem; border: 1px solid #f1f5f9; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
+        .box h3 { margin: 0 0 12px 0; font-size: 0.85rem; text-transform: uppercase; border-bottom: 1px solid #eee; padding-bottom: 5px; }
+        .box input { width: 100%; padding: 10px; margin-bottom: 8px; border: 1px solid #e2e8f0; border-radius: 6px; box-sizing: border-box; }
+        
+        .btn { border: none; border-radius: 6px; color: white; cursor: pointer; font-weight: 600; padding: 10px; width: 100%; }
+
+        .data-grid { display: grid; grid-template-columns: 1fr 3fr; gap: 1rem; }
+        @media (max-width: 900px) { .data-grid { grid-template-columns: 1fr; } }
+        .table-wrapper { background: white; border-radius: 0.8rem; border: 1px solid #e2e8f0; overflow: hidden; }
+        .section-title { padding: 12px; background: #f8fafc; font-weight: bold; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;}
+        
+        .filter-header { display: flex; gap: 5px; padding: 10px; background: #fff; border-bottom: 1px solid #eee; }
+        .filter-header input { padding: 5px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.75rem; flex: 1; }
+
+        .scroll-area { max-height: 500px; overflow-y: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+        td, th { padding: 10px; text-align: left; border-bottom: 1px solid #f1f5f9; }
+        thead th { background: #f8fafc; position: sticky; top: 0; z-index: 5; }
+
+        .badge { padding: 3px 6px; border-radius: 4px; font-size: 0.65rem; font-weight: bold; }
+        .b-in { background: #ecfdf5; color: var(--success); }
+        .b-out { background: #fffbeb; color: var(--warning); }
+        .b-dmg { background: #fef2f2; color: var(--danger); }
+        .btn-del { color: var(--danger); cursor: pointer; border: none; background: none; font-size: 1rem; }
+    </style>
+</head>
+<body>
+
+<div id="firstLaunchOverlay" style="display:none"><div class="login-box"><h2>Activation</h2><p>Code : inventory1990</p><input type="text" id="firstLaunchCode"><button class="btn" style="background:var(--accent)" onclick="verifyFirstLaunch()">ACTIVER</button></div></div>
+<div id="loginOverlay" style="display:none"><div class="login-box"><h2>Fred Stock Pro</h2><input type="password" id="pinCode" placeholder="PIN de sécurité"><button class="btn" style="background:var(--primary)" onclick="checkPin()">ENTRER</button></div></div>
+
+<div id="mainApp">
+    <div class="header">
+        <h2 style="font-size: 1rem; margin:0">FRED <span style="color:var(--accent)">SYSTEM CLOUD</span></h2>
+        <button onclick="location.reload()" style="background:#f1f5f9; border:none; padding:6px 12px; border-radius:6px; cursor:pointer;">Déconnexion</button>
+    </div>
+
+    <div class="container">
+        <div class="nav-tabs">
+            <button class="nav-btn active" id="btnStock" onclick="showTab('stock')">📦 INVENTAIRE</button>
+            <button class="nav-btn" id="btnAdmin" onclick="showTab('admin')">🔐 ADMIN</button>
+        </div>
+
+        <div id="stockSection">
+            <div class="summary">
+                <div class="card" style="border-color:var(--success)">ENTRÉES<span id="statIn">0</span></div>
+                <div class="card" style="border-color:var(--warning)">SORTIES<span id="statOut">0</span></div>
+                <div class="card" style="border-color:var(--danger)">PERTES<span id="statDmg">0</span></div>
+                <div class="card" style="border-color:var(--accent)">STOCK GLOBAL<span id="statNet">0</span></div>
+            </div>
+
+            <div class="forms-grid">
+                <div class="box"><h3 style="color:var(--success)">📥 Entrée</h3>
+                    <input type="text" id="pIn" list="fullProdList" placeholder="Nom Produit">
+                    <input type="number" id="qIn" placeholder="Quantité">
+                    <input type="text" id="cIn" placeholder="Catégorie">
+                    <input type="text" id="dIn" placeholder="Chauffeur / Source">
+                    <button class="btn" style="background:var(--success)" onclick="handle('ENTRÉE')">Ajouter au Stock</button>
+                </div>
+                <div class="box"><h3 style="color:var(--warning)">📤 Sortie</h3>
+                    <input type="text" id="pOut" list="fullProdList" placeholder="Nom Produit">
+                    <input type="number" id="qOut" placeholder="Quantité">
+                    <input type="text" id="dOut" placeholder="Chauffeur / Client">
+                    <button class="btn" style="background:var(--warning)" onclick="handle('SORTIE')">Valider Sortie</button>
+                </div>
+                <div class="box"><h3 style="color:var(--danger)">❌ Perte</h3>
+                    <input type="text" id="pDmg" list="fullProdList" placeholder="Nom Produit">
+                    <input type="number" id="qDmg" placeholder="Quantité">
+                    <input type="text" id="dDmg" placeholder="Motif de la perte">
+                    <button class="btn" style="background:var(--danger)" onclick="handle('ABÎMÉ')">Enregistrer Perte</button>
+                </div>
+            </div>
+
+            <div class="data-grid">
+                <div class="table-wrapper">
+                    <div class="section-title">
+                        📊 ÉTAT STOCKS
+                        <button onclick="printStockReport()" style="cursor:pointer; font-size:9px; background:var(--primary); color:white; border:none; padding:3px 6px; border-radius:4px">🖨️ IMPRIMER</button>
+                    </div>
+                    <div class="filter-header">
+                        <input type="text" id="sfCat" onkeyup="render()" placeholder="Filtrer par Catégorie...">
+                    </div>
+                    <div class="scroll-area"><table><thead><tr><th>Produit (Cat)</th><th>Qté</th></tr></thead><tbody id="stockTable"></tbody></table></div>
+                </div>
+                
+                <div class="table-wrapper">
+                    <div class="section-title">
+                        📜 HISTORIQUE GÉNÉRAL
+                        <button onclick="generatePDF()" style="cursor:pointer; font-size:10px; background:none; border:1px solid #ddd; padding:2px 5px">Export PDF</button>
+                    </div>
+                    <div class="filter-header">
+                        <input type="text" id="jfProd" onkeyup="render()" placeholder="Filtrer Produit...">
+                        <input type="text" id="jfDriver" onkeyup="render()" placeholder="Filtrer Source...">
+                        <input type="date" id="jfDate" onchange="render()">
+                        <button onclick="document.getElementById('jfDate').value=''; render()" style="border:none; background:#eee; cursor:pointer; border-radius:4px; padding:0 5px">Tout</button>
+                    </div>
+                    <div class="scroll-area">
+                        <table>
+                            <thead><tr><th>Date & Heure</th><th>Type</th><th>Produit</th><th>Qté</th><th>Info</th><th></th></tr></thead>
+                            <tbody id="logTable"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="adminSection" style="display:none;">
+            <div class="box" id="adminAuth">
+                <input type="password" id="adminPass" placeholder="Mot de passe Super Admin">
+                <button class="btn" style="background:var(--primary)" onclick="authAdmin()">DÉBLOQUER</button>
+            </div>
+            <div id="adminControls" style="display:none;">
+                <div class="box"><h3>Changer PIN App</h3><input type="text" id="newPin" placeholder="Nouveau PIN"><button class="btn" style="background:var(--success)" onclick="updatePin()">Sauvegarder</button></div>
+                <div class="box"><h3>Nettoyage</h3><button class="btn" style="background:var(--danger)" onclick="clearAll()">Vider toute la base</button></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<datalist id="fullProdList"></datalist>
+
+<script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyCyt856d5GJPbqB-NQXEuPueCLYr7QRGOY",
+      authDomain: "fredappinventory.firebaseapp.com",
+      databaseURL: "https://fredappinventory-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "fredappinventory",
+      storageBucket: "fredappinventory.firebasestorage.app",
+      messagingSenderId: "234216779654",
+      appId: "1:234216779654:web:a583a2d976fffced8f8607"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const database = firebase.database();
+    
+    let db = [];
+    let inventory = {};
+    let CURRENT_PIN = "1234560000";
+
+    function showTab(tab) {
+        document.getElementById('stockSection').style.display = tab === 'stock' ? 'block' : 'none';
+        document.getElementById('adminSection').style.display = tab === 'admin' ? 'block' : 'none';
+        document.getElementById('btnStock').classList.toggle('active', tab === 'stock');
+        document.getElementById('btnAdmin').classList.toggle('active', tab === 'admin');
+    }
+
+    function authAdmin() { if(document.getElementById('adminPass').value === "SUPER2026") { document.getElementById('adminAuth').style.display = 'none'; document.getElementById('adminControls').style.display = 'block'; } }
+
+    function updatePin() { const p = document.getElementById('newPin').value; if(p) database.ref('config/app_pin').set(p).then(() => alert("PIN modifié !")); }
+
+    function checkPin() {
+        database.ref('config/app_pin').once('value', s => {
+            if(s.val()) CURRENT_PIN = s.val();
+            if(document.getElementById('pinCode').value === CURRENT_PIN) {
+                document.getElementById('loginOverlay').style.display = 'none';
+                document.getElementById('mainApp').style.display = 'block';
+                sync();
+            } else alert("PIN Incorrect");
+        });
+    }
+
+    function securityBridge() {
+        if (localStorage.getItem('fred_act') !== 'OK') document.getElementById('firstLaunchOverlay').style.display='flex';
+        else document.getElementById('loginOverlay').style.display='flex';
+    }
+
+    function verifyFirstLaunch() { if(document.getElementById('firstLaunchCode').value === "inventory1990") { localStorage.setItem('fred_act', 'OK'); location.reload(); } }
+
+    function sync() {
+        database.ref('movements').on('value', snap => {
+            const data = snap.val();
+            db = data ? Object.values(data).reverse() : [];
+            render();
+        });
+    }
+
+    function handle(type) {
+        let s = type==='ENTRÉE'?'In':(type==='SORTIE'?'Out':'Dmg');
+        let p = document.getElementById('p'+s).value.toUpperCase().trim();
+        let q = parseFloat(document.getElementById('q'+s).value) || 0;
+        let d = document.getElementById('d'+s).value || "-";
+        let cat = type==='ENTRÉE' ? document.getElementById('cIn').value.toUpperCase() || "GÉNÉRAL" : (inventory[p]?.cat || "GÉNÉRAL");
+
+        if(!p || q <= 0) return alert("Champs invalides");
+        if(type !== 'ENTRÉE' && q > (inventory[p]?.q || 0)) return alert("Stock insuffisant !");
+
+        const mid = Date.now();
+        database.ref('movements/' + mid).set({
+            id: mid, 
+            dt: new Date().toLocaleDateString('fr-CA'),
+            fdt: new Date().toLocaleString('fr-FR', {timeStyle:'short', dateStyle:'short'}),
+            type, p, q, d, cat
+        });
+        ['p'+s, 'q'+s, 'd'+s].forEach(id => document.getElementById(id).value = '');
+        if(type==='ENTRÉE') document.getElementById('cIn').value='';
+    }
+
+    function del(id) { if(confirm("Supprimer définitivement ce mouvement de l'historique ?")) database.ref('movements/' + id).remove(); }
+
+    function render() {
+        const fProd = document.getElementById('jfProd').value.toLowerCase();
+        const fDriver = document.getElementById('jfDriver').value.toLowerCase();
+        const fDate = document.getElementById('jfDate').value;
+        const sCat = document.getElementById('sfCat').value.toLowerCase();
+
+        inventory = {};
+        let stats = { i:0, o:0, d:0, total:0 };
+        
+        const logTable = document.getElementById('logTable');
+        const stockTable = document.getElementById('stockTable');
+        const datalist = document.getElementById('fullProdList');
+
+        logTable.innerHTML = ""; stockTable.innerHTML = ""; datalist.innerHTML = "";
+
+        // Calcul Stock Global et Stats
+        db.forEach(m => {
+            if(!inventory[m.p]) inventory[m.p] = { q:0, cat:m.cat };
+            if(m.type === 'ENTRÉE') inventory[m.p].q += m.q;
+            else inventory[m.p].q -= m.q;
+
+            // Stats filtrées par date si sélectionnée, sinon total historique
+            if(!fDate || m.dt === fDate) {
+                if(m.type === 'ENTRÉE') stats.i += m.q;
+                else if(m.type === 'SORTIE') stats.o += m.q;
+                else if(m.type === 'ABÎMÉ') stats.d += m.q;
+            }
+        });
+
+        // Affichage État des Stocks
+        Object.keys(inventory).sort().forEach(p => {
+            datalist.innerHTML += `<option value="${p}">`;
+            const item = inventory[p];
+            if(item.q !== 0 && item.cat.toLowerCase().includes(sCat)) {
+                stockTable.innerHTML += `<tr><td><b>${p}</b><br><small>${item.cat}</small></td><td>${item.q}</td></tr>`;
+            }
+            if(item.q !== 0) stats.total += item.q;
+        });
+
+        // Affichage Historique complet avec filtres
+        db.forEach(m => {
+            const matchProd = m.p.toLowerCase().includes(fProd);
+            const matchDriver = m.d.toLowerCase().includes(fDriver);
+            const matchDate = !fDate || m.dt === fDate;
+
+            if(matchProd && matchDriver && matchDate) {
+                let b = m.type==='ENTRÉE'?'b-in':(m.type==='SORTIE'?'b-out':'b-dmg');
+                logTable.innerHTML += `<tr>
+                    <td>${m.fdt}</td>
+                    <td><span class="badge ${b}">${m.type}</span></td>
+                    <td><b>${m.p}</b></td>
+                    <td>${m.q}</td>
+                    <td>${m.d}</td>
+                    <td><button class="btn-del" onclick="del(${m.id})">🗑️</button></td>
+                </tr>`;
+            }
+        });
+
+        document.getElementById('statIn').innerText = stats.i;
+        document.getElementById('statOut').innerText = stats.o;
+        document.getElementById('statDmg').innerText = stats.d;
+        document.getElementById('statNet').innerText = stats.total;
+    }
+
+    function printStockReport() {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        const catFilter = document.getElementById('sfCat').value.toUpperCase();
+        
+        let title = catFilter ? "INVENTAIRE - " + catFilter : "INVENTAIRE COMPLET";
+        doc.setFontSize(16);
+        doc.text(title, 14, 20);
+        doc.setFontSize(10);
+        doc.text("Généré le : " + new Date().toLocaleString(), 14, 28);
+
+        const rows = [];
+        Object.keys(inventory).sort().forEach(p => {
+            const item = inventory[p];
+            if(item.q !== 0) {
+                if(!catFilter || item.cat.toUpperCase().includes(catFilter)) {
+                    rows.push([p, item.cat, item.q]);
+                }
+            }
+        });
+
+        doc.autoTable({
+            head: [['Produit', 'Catégorie', 'Quantité']],
+            body: rows,
+            startY: 35,
+            theme: 'grid',
+            headStyles: { fillColor: [15, 23, 42] }
+        });
+
+        doc.save("Inventaire.pdf");
+    }
+
+    function generatePDF() {
+        const { jsPDF } = window.jspdf; 
+        const doc = new jsPDF();
+        const filterInfo = document.getElementById('jfDate').value || "HISTORIQUE COMPLET";
+        
+        doc.text("EXTRAIT D'HISTORIQUE - " + filterInfo, 14, 15);
+        const rows = [];
+        document.querySelectorAll("#logTable tr").forEach(tr => {
+            const r = []; 
+            tr.querySelectorAll("td").forEach((td, idx) => { if(idx < 5) r.push(td.innerText); });
+            rows.push(r);
+        });
+        doc.autoTable({ 
+            head: [['Date/Heure', 'Type', 'Produit', 'Qté', 'Info']], 
+            body: rows, 
+            startY: 20,
+            styles: { fontSize: 8 }
+        });
+        doc.save("Historique_Stock.pdf");
+    }
+
+    function clearAll() { if(confirm("ATTENTION : Supprimer TOUT l'historique et remettre les stocks à zéro ?")) database.ref('movements').remove(); }
+
+    window.onload = securityBridge;
+</script>
+</body>
+</html>
