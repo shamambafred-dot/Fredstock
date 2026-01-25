@@ -1,0 +1,2 @@
+# Fredstock
+Stock inventaire 
